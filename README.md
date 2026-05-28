@@ -3,7 +3,7 @@
 > Keep your screen awake without raising flags. Subtle, undetectable mouse movement from the system tray.
 
 <p align="center">
-  <img src="mouse_jiggler.ico" width="128" alt="Mouse Jiggler icon">
+  <img src="icon_preview.png" width="128" alt="Mouse Jiggler icon">
 </p>
 
 ## ✨ Features
@@ -78,6 +78,7 @@ mouse-jiggler/
 ├── mouse_jiggler.py          # Main application
 ├── mouse_jiggler.ico         # Application icon (multi-res)
 ├── generate_icon.py          # Icon generator script
+├── icon_preview.png          # Icon preview for README
 ├── requirements.txt          # Python dependencies
 ├── build.bat                 # One-click PyInstaller build
 ├── .gitignore
