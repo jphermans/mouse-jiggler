@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
 Mouse Jiggler — keeps your screen awake by moving the mouse imperceptibly.
-Runs in the system tray. Uses SendInput API (hardware-level) — indistinguishable
-from real mouse movement. No services, no registry keys, no admin rights needed.
+Runs in the system tray. Uses OS-native mouse input — indistinguishable
+from real hardware movement. No services, no registry keys, no admin rights.
 
-Windows only.
+Cross-platform: Windows, macOS, Linux.
 """
 
-import ctypes
-import ctypes.wintypes
 import json
 import os
+import platform
 import random
+import signal
 import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import ttk
 from pathlib import Path
+from tkinter import ttk
 
 # ── pystray + PIL for tray icon ──────────────────────────────────────────
 try:
@@ -30,9 +30,22 @@ except ImportError:
         "Then run again."
     )
 
+# ── Platform detection ───────────────────────────────────────────────────
+IS_WINDOWS = platform.system() == "Windows"
+IS_MACOS = platform.system() == "Darwin"
+IS_LINUX = platform.system() == "Linux"
+
 # ── Constants ────────────────────────────────────────────────────────────
 APP_NAME = "Mouse Jiggler"
-CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_NAME
+
+# Config directory: platform-appropriate location
+if IS_WINDOWS:
+    CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / APP_NAME
+elif IS_MACOS:
+    CONFIG_DIR = Path.home() / "Library" / "Application Support" / APP_NAME
+else:  # Linux
+    CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "mouse-jiggler"
+
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_INTERVAL = 60       # seconds between jiggles
@@ -40,50 +53,182 @@ DEFAULT_PIXELS = 3          # max pixels to move
 MIN_INTERVAL = 5            # minimum allowed interval
 MAX_INTERVAL = 600          # maximum allowed interval
 
-# ── SendInput structures (low-level Win32 API) ───────────────────────────
-# Uses ctypes — no pywin32 dependency. SendInput injects at the same level
-# as a physical mouse driver, so it's indistinguishable from real input.
 
-PUL = ctypes.POINTER(ctypes.c_ulong)
+# ═══════════════════════════════════════════════════════════════════════════
+#  MOUSE MOVEMENT — platform-specific low-level implementations
+# ═══════════════════════════════════════════════════════════════════════════
 
-class MouseInput(ctypes.Structure):
-    _fields_ = [
-        ("dx", ctypes.c_long),
-        ("dy", ctypes.c_long),
-        ("mouseData", ctypes.c_ulong),
-        ("dwFlags", ctypes.c_ulong),
-        ("time", ctypes.c_ulong),
-        ("dwExtraInfo", PUL),
+if IS_WINDOWS:
+    import ctypes
+    import ctypes.wintypes
+
+    PUL = ctypes.POINTER(ctypes.c_ulong)
+
+    class MouseInput(ctypes.Structure):
+        _fields_ = [
+            ("dx", ctypes.c_long),
+            ("dy", ctypes.c_long),
+            ("mouseData", ctypes.c_ulong),
+            ("dwFlags", ctypes.c_ulong),
+            ("time", ctypes.c_ulong),
+            ("dwExtraInfo", PUL),
+        ]
+
+    class InputUnion(ctypes.Union):
+        _fields_ = [("mi", MouseInput)]
+
+    class Input(ctypes.Structure):
+        _fields_ = [
+            ("type", ctypes.c_ulong),
+            ("union", InputUnion),
+        ]
+
+    INPUT_MOUSE = 0
+    MOUSEEVENTF_MOVE = 0x0001
+
+    def jiggle_mouse(pixels: int = DEFAULT_PIXELS):
+        """Windows: Win32 SendInput API — indistinguishable from hardware input."""
+        dx = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+        dy = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+
+        inp = Input()
+        inp.type = INPUT_MOUSE
+        inp.union.mi.dx = dx
+        inp.union.mi.dy = dy
+        inp.union.mi.mouseData = 0
+        inp.union.mi.dwFlags = MOUSEEVENTF_MOVE
+        inp.union.mi.time = 0
+        inp.union.mi.dwExtraInfo = None
+
+        ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+
+elif IS_MACOS:
+    import ctypes
+    import ctypes.util
+
+    _cg = ctypes.cdll.LoadLibrary(ctypes.util.find_library("CoreGraphics"))
+
+    class CGPoint(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+
+    # kCGEventMouseMoved = 5, kCGHIDEventTap = 0
+    _CG_EVENT_MOUSE_MOVED = 5
+    _CG_HID_EVENT_TAP = 0
+
+    _cg.CGEventCreate.restype = ctypes.c_void_p
+    _cg.CGEventCreate.argtypes = [ctypes.c_void_p]
+    _cg.CGEventGetLocation.restype = CGPoint
+    _cg.CGEventGetLocation.argtypes = [ctypes.c_void_p]
+    _cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
+    _cg.CGEventCreateMouseEvent.argtypes = [
+        ctypes.c_void_p,   # source (NULL = default)
+        ctypes.c_uint32,   # event type
+        CGPoint,           # position
+        ctypes.c_uint32,   # mouse button
     ]
+    _cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+    _cg.CFRelease.argtypes = [ctypes.c_void_p]
 
-class InputUnion(ctypes.Union):
-    _fields_ = [("mi", MouseInput)]
+    def jiggle_mouse(pixels: int = DEFAULT_PIXELS):
+        """macOS: CoreGraphics CGEvent — equivalent to hardware mouse events."""
+        dx = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+        dy = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
 
-class Input(ctypes.Structure):
-    _fields_ = [
-        ("type", ctypes.c_ulong),
-        ("union", InputUnion),
-    ]
+        # Get current mouse position via a dummy event
+        dummy = _cg.CGEventCreate(None)
+        loc = _cg.CGEventGetLocation(dummy)
+        _cg.CFRelease(dummy)
 
-# Flags
-INPUT_MOUSE = 0
-MOUSEEVENTF_MOVE = 0x0001
+        new_x = loc.x + dx
+        new_y = loc.y + dy
 
-def jiggle_mouse(pixels: int = DEFAULT_PIXELS):
-    """Move the mouse by a random 1..pixels offset in a random direction."""
-    dx = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
-    dy = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+        pt = CGPoint(new_x, new_y)
+        event = _cg.CGEventCreateMouseEvent(None, _CG_EVENT_MOUSE_MOVED, pt, 0)
+        _cg.CGEventPost(_CG_HID_EVENT_TAP, event)
+        _cg.CFRelease(event)
 
-    inp = Input()
-    inp.type = INPUT_MOUSE
-    inp.union.mi.dx = dx
-    inp.union.mi.dy = dy
-    inp.union.mi.mouseData = 0
-    inp.union.mi.dwFlags = MOUSEEVENTF_MOVE
-    inp.union.mi.time = 0
-    inp.union.mi.dwExtraInfo = None
+elif IS_LINUX:
+    # Linux: use xdotool (usually available) or fall back gracefully
+    import subprocess
 
-    ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+    _xdotool_available = None
+
+    def _check_xdotool():
+        global _xdotool_available
+        if _xdotool_available is None:
+            try:
+                subprocess.run(
+                    ["xdotool", "version"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=3,
+                )
+                _xdotool_available = True
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                _xdotool_available = False
+        return _xdotool_available
+
+    def jiggle_mouse(pixels: int = DEFAULT_PIXELS):
+        """Linux: xdotool relative mouse movement."""
+        dx = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+        dy = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
+
+        if not _check_xdotool():
+            return  # silent no-op if xdotool is not installed
+
+        subprocess.run(
+            ["xdotool", "mousemove_relative", "--", str(dx), str(dy)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  SINGLE INSTANCE — prevents multiple copies from running
+# ═══════════════════════════════════════════════════════════════════════════
+
+def acquire_single_instance() -> bool:
+    """Return True if this is the only running instance, False otherwise."""
+    if IS_WINDOWS:
+        import ctypes
+        import ctypes.wintypes
+
+        mutex_name = f"Global\\{APP_NAME.replace(' ', '')}SingleInstance"
+        mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"{APP_NAME} is already running.\nCheck your system tray.",
+                APP_NAME,
+                0x40,
+            )
+            return False
+        return True
+
+    # macOS / Linux: PID-based lock file
+    lock_file = CONFIG_DIR / ".lock"
+
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+    if lock_file.exists():
+        try:
+            old_pid = int(lock_file.read_text().strip())
+            # Check if the old process is still alive
+            os.kill(old_pid, 0)
+            # Process exists — already running
+            print(f"{APP_NAME} is already running (PID {old_pid}).", file=sys.stderr)
+            return False
+        except (ValueError, OSError, ProcessLookupError):
+            # Stale lock file or dead process — safe to overwrite
+            pass
+
+    lock_file.write_text(str(os.getpid()))
+    # Clean up lock file on exit
+    import atexit
+    atexit.register(lambda: lock_file.unlink(missing_ok=True))
+    return True
 
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -98,7 +243,6 @@ def load_config() -> dict:
         if CONFIG_FILE.exists():
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-            # Merge with defaults (in case config is missing keys)
             defaults.update(data)
     except (json.JSONDecodeError, OSError):
         pass
@@ -106,7 +250,7 @@ def load_config() -> dict:
 
 
 def save_config(config: dict):
-    """Persist config to %APPDATA%."""
+    """Persist config to the platform-appropriate location."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
@@ -130,7 +274,7 @@ class SettingsWindow:
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        # Dark-ish theme
+        # Dark theme
         self.root.configure(bg="#2b2b2b")
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -175,13 +319,18 @@ class SettingsWindow:
         px_scale.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 20))
 
         # ── Info ──
+        backend_name = {
+            "Windows": "Win32 SendInput",
+            "Darwin": "CoreGraphics CGEvent",
+            "Linux": "xdotool",
+        }.get(platform.system(), "platform API")
+
         info = ttk.Label(
             main,
             text=(
                 "The mouse moves 1–N pixels in a random direction\n"
-                "at your chosen interval. Movements are injected\n"
-                "via the Win32 SendInput API — indistinguishable\n"
-                "from real hardware input."
+                f"at your chosen interval. Uses {backend_name} —\n"
+                "indistinguishable from real hardware input."
             ),
             justify="left",
             foreground="#888",
@@ -228,18 +377,17 @@ class SettingsWindow:
 
 # ── Tray Icon ────────────────────────────────────────────────────────────
 def load_icon():
-    """Load the application icon. Tries the .ico file, falls back to a generated one."""
-    # When running from source, icon is next to the script
-    # When running from PyInstaller .exe, it's in the MEIPASS temp dir
-    import sys
+    """Load the application icon. Tries .ico/.png files, falls back to generated."""
     if getattr(sys, 'frozen', False):
         base_dir = Path(sys._MEIPASS)
     else:
         base_dir = Path(__file__).resolve().parent
 
-    ico_path = base_dir / "mouse_jiggler.ico"
-    if ico_path.exists():
-        return Image.open(ico_path)
+    # Try icon files
+    for name in ("mouse_jiggler.ico", "mouse_jiggler.png", "icon_preview.png"):
+        path = base_dir / name
+        if path.exists():
+            return Image.open(path)
 
     # Fallback: generate a simple icon
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -339,16 +487,7 @@ class MouseJiggler:
 
 # ── Entry point ──────────────────────────────────────────────────────────
 def main():
-    import ctypes.wintypes
-    mutex_name = f"Global\\{APP_NAME.replace(' ', '')}SingleInstance"
-    mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
-    if ctypes.windll.kernel32.GetLastError() == 183:
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            f"{APP_NAME} is already running.\nCheck your system tray.",
-            APP_NAME,
-            0x40,
-        )
+    if not acquire_single_instance():
         sys.exit(0)
 
     app = MouseJiggler()
