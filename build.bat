@@ -14,7 +14,7 @@ pyinstaller ^
     --windowed ^
     --noconsole ^
     --name "MouseJiggler" ^
-    --add-data "README.md;." ^
+    --add-data "mouse_jiggler.ico;." ^
     --clean ^
     mouse_jiggler.py
 

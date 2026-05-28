@@ -227,23 +227,28 @@ class SettingsWindow:
 
 
 # ── Tray Icon ────────────────────────────────────────────────────────────
-def make_icon_image(size=64, color="#4CAF50"):
-    """Generate a simple mouse-cursor icon programmatically."""
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+def load_icon():
+    """Load the application icon. Tries the .ico file, falls back to a generated one."""
+    # When running from source, icon is next to the script
+    # When running from PyInstaller .exe, it's in the MEIPASS temp dir
+    import sys
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys._MEIPASS)
+    else:
+        base_dir = Path(__file__).resolve().parent
+
+    ico_path = base_dir / "mouse_jiggler.ico"
+    if ico_path.exists():
+        return Image.open(ico_path)
+
+    # Fallback: generate a simple icon
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-
-    # Simple arrow shape
     points = [
-        (size * 0.15, size * 0.10),
-        (size * 0.15, size * 0.75),
-        (size * 0.38, size * 0.60),
-        (size * 0.55, size * 0.85),
-        (size * 0.70, size * 0.75),
-        (size * 0.40, size * 0.48),
-        (size * 0.65, size * 0.35),
+        (10, 6), (10, 48), (24, 38), (35, 54),
+        (46, 48), (26, 28), (42, 19),
     ]
-    draw.polygon(points, fill=color, outline="#333333")
-
+    draw.polygon(points, fill="#4CAF50", outline="#2E7D32")
     return img
 
 
@@ -277,7 +282,7 @@ class MouseJiggler:
 
     def _create_tray(self):
         """Build and run the system tray icon."""
-        icon_img = make_icon_image()
+        icon_img = load_icon()
 
         paused = self.paused or not self.config.get("enabled", True)
         menu = pystray.Menu(
