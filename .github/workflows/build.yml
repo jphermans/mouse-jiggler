@@ -69,7 +69,6 @@ jobs:
             --hidden-import Foundation \
             --hidden-import objc \
             --hidden-import Quartz \
-            --hidden-import pystray._darwin \
             mouse_jiggler.py
 
       - name: Package as zip

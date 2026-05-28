@@ -15,18 +15,18 @@ import signal
 import sys
 import threading
 import time
+import traceback
 from pathlib import Path
 
 # tkinter imported lazily in SettingsWindow (macOS PyInstaller needs Tcl/Tk bundled)
 
 # ── pystray + PIL for tray icon ──────────────────────────────────────────
 try:
-    import pystray
     from PIL import Image, ImageDraw
 except ImportError:
     sys.exit(
         "Missing dependencies. Install with:\n"
-        "  pip install pystray Pillow\n"
+        "  pip install Pillow\n"
         "Then run again."
     )
 
@@ -47,11 +47,24 @@ else:  # Linux
     CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "mouse-jiggler"
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
+CRASH_LOG = CONFIG_DIR / "crash.log"
 
 DEFAULT_INTERVAL = 60       # seconds between jiggles
 DEFAULT_PIXELS = 3          # max pixels to move
 MIN_INTERVAL = 5            # minimum allowed interval
 MAX_INTERVAL = 600          # maximum allowed interval
+
+
+def log_crash(msg: str):
+    """Write crash info to a log file for debugging silent failures."""
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(CRASH_LOG, "a") as f:
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+            f.write(traceback.format_exc())
+            f.write("\n")
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -292,7 +305,7 @@ def save_config(config: dict):
         json.dump(config, f, indent=2)
 
 
-# ── Settings Window ──────────────────────────────────────────────────────
+# ── Settings Window (tkinter) ────────────────────────────────────────────
 class SettingsWindow:
     def __init__(self, config: dict, on_save=None):
         self.config = config
@@ -361,7 +374,7 @@ class SettingsWindow:
         backend_name = {
             "Windows": "Win32 SendInput",
             "Darwin": "CoreGraphics CGEvent",
-            "Linux": "xdotool",
+            "Linux": "Xlib XWarpPointer",
         }.get(platform.system(), "platform API")
 
         info = ttk.Label(
@@ -414,7 +427,7 @@ class SettingsWindow:
             self.root = None
 
 
-# ── Tray Icon ────────────────────────────────────────────────────────────
+# ── Icon loading ─────────────────────────────────────────────────────────
 def load_icon():
     """Load the application icon. Tries .ico/.png files, falls back to generated."""
     if getattr(sys, 'frozen', False):
@@ -426,7 +439,7 @@ def load_icon():
     for name in ("mouse_jiggler.ico", "mouse_jiggler.png", "icon_preview.png"):
         path = base_dir / name
         if path.exists():
-            return Image.open(path)
+            return Image.open(path).convert("RGBA")
 
     # Fallback: generate a simple icon
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
@@ -438,6 +451,148 @@ def load_icon():
     draw.polygon(points, fill="#4CAF50", outline="#2E7D32")
     return img
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  TRAY ICON — platform-specific implementations
+# ═══════════════════════════════════════════════════════════════════════════
+
+if IS_MACOS:
+    # macOS: native AppKit NSStatusBar (no pystray — avoids PyObjC conflicts)
+    try:
+        from AppKit import (
+            NSStatusBar, NSVariableStatusItemLength,
+            NSMenu, NSMenuItem, NSImage, NSTIFFCompression,
+            NSApplication, NSApp,
+        )
+        from Foundation import NSObject
+    except ImportError as e:
+        log_crash(f"PyObjC import failed: {e}")
+        sys.exit(
+            "Missing macOS dependencies. Install with:\n"
+            "  pip3 install pyobjc-framework-Cocoa\n"
+            "Then run again."
+        )
+
+    class _MacOSTray(NSObject):
+        """Native macOS menu bar app using NSStatusBar."""
+
+        def initWithApp_(self, app):
+            self = super().init()
+            if self is None:
+                return None
+            self._app = app
+            self.status_item = None
+            return self
+
+        def setup(self):
+            bar = NSStatusBar.systemStatusBar()
+            self.status_item = bar.statusItemWithLength_(NSVariableStatusItemLength)
+
+            # Set icon
+            self._update_icon()
+
+            # Build menu
+            self._rebuild_menu()
+
+        def _pil_to_nsimage(self, pil_img):
+            """Convert PIL Image to NSImage for menu bar."""
+            # Resize to 18x18 (standard menu bar icon size)
+            size = 18
+            scaled = pil_img.resize((size, size), Image.LANCZOS)
+            # Convert to grayscale template for proper dark/light mode
+            gray = scaled.convert("L")
+            # Convert back to RGBA for NSImage
+            rgba = Image.new("RGBA", (size, size))
+            rgba.putalpha(gray)
+            rgba_data = rgba.tobytes()
+
+            # Create NSImage from raw RGBA bytes
+            import ctypes
+            from objc import lookUpClass
+
+            # Use NSBitmapImageRep to create image from raw bytes
+            NSBitmapImageRep = lookUpClass("NSBitmapImageRep")
+            rep = NSBitmapImageRep.alloc().initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel_(
+                None, size, size, 8, 4, True, False,
+                "NSDeviceRGBColorSpace",
+                size * 4, 32,
+            )
+            if rep is None:
+                raise RuntimeError("Failed to create NSBitmapImageRep")
+
+            # Copy pixel data
+            ctypes.memmove(
+                rep.bitmapData(),
+                rgba_data,
+                len(rgba_data),
+            )
+
+            ns_img = NSImage.alloc().initWithSize_((size, size))
+            ns_img.addRepresentation_(rep)
+            ns_img.setTemplate_(True)  # macOS treats as template for dark/light mode
+            return ns_img
+
+        def _update_icon(self):
+            if not self.status_item:
+                return
+            try:
+                icon_img = load_icon()
+                ns_img = self._pil_to_nsimage(icon_img)
+                self.status_item.button().setImage_(ns_img)
+            except Exception as e:
+                log_crash(f"Failed to set tray icon: {e}")
+
+        def _rebuild_menu(self):
+            if not self.status_item:
+                return
+
+            menu = NSMenu.alloc().init()
+            menu.setAutoenablesItems_(False)
+
+            paused = self._app.paused
+
+            # Pause / Resume
+            pause_title = "▶ Resume" if paused else "⏸ Pause"
+            pause_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                pause_title, "togglePause:", ""
+            )
+            pause_item.setTarget_(self)
+            menu.addItem_(pause_item)
+
+            # Settings
+            settings_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "⚙ Settings", "openSettings:", ""
+            )
+            settings_item.setTarget_(self)
+            menu.addItem_(settings_item)
+
+            # Separator
+            menu.addItem_(NSMenuItem.separatorItem())
+
+            # Quit
+            quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
+                "✕ Quit", "quitApp:", "q"
+            )
+            quit_item.setTarget_(self)
+            menu.addItem_(quit_item)
+
+            self.status_item.setMenu_(menu)
+
+        def togglePause_(self, sender):
+            self._app._toggle_pause()
+            self._rebuild_menu()
+
+        def openSettings_(self, sender):
+            self._app._open_settings()
+
+        def quitApp_(self, sender):
+            self._app.running = False
+            NSApp().terminate_(None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  MAIN APP CLASS
+# ═══════════════════════════════════════════════════════════════════════════
 
 class MouseJiggler:
     def __init__(self):
@@ -452,28 +607,16 @@ class MouseJiggler:
 
     def start(self):
         """Start the jiggle thread and tray icon."""
-        if IS_MACOS:
-            # On macOS, ensure PyObjC/pystray deps are available before we start
-            try:
-                import pystray._darwin  # noqa: force import check
-            except ImportError as e:
-                import subprocess
-                subprocess.run([
-                    "osascript", "-e",
-                    f'display dialog "Missing macOS dependency: {e}\\n\\n'
-                    'Run: pip3 install pyobjc-framework-Cocoa\\n\\n'
-                    'The app will now exit." '
-                    'buttons {{"OK"}} default button "OK" with icon stop'
-                ], timeout=10)
-                sys.exit(1)
-
         if self.config.get("enabled", True):
             self.running = True
             self.paused = False
             self.thread = threading.Thread(target=self._jiggle_loop, daemon=True)
             self.thread.start()
 
-        self._create_tray()
+        if IS_MACOS:
+            self._start_macos_tray()
+        else:
+            self._start_pystray_tray()
 
     def _jiggle_loop(self):
         """Main loop — jiggle at the configured interval."""
@@ -482,46 +625,62 @@ class MouseJiggler:
                 jiggle_mouse(self.config.get("pixels", DEFAULT_PIXELS))
             time.sleep(self.config.get("interval", DEFAULT_INTERVAL))
 
-    def _create_tray(self):
-        """Build and run the system tray icon."""
+    # ── macOS native tray ──────────────────────────────────────────────
+    def _start_macos_tray(self):
+        """Start native macOS menu bar app via NSStatusBar."""
+        try:
+            app = NSApplication.sharedApplication()
+            app.setActivationPolicy_(0)  # NSApplicationActivationPolicyRegular
+
+            self._macos_tray = _MacOSTray.alloc().initWithApp_(self)
+            self._macos_tray.setup()
+
+            app.run()
+        except Exception:
+            log_crash("Failed to start macOS tray")
+
+    # ── Windows / Linux pystray tray ───────────────────────────────────
+    def _start_pystray_tray(self):
+        """Start tray icon via pystray (Windows/Linux)."""
+        import pystray
+
         icon_img = load_icon()
+        menu = self._build_pystray_menu()
+        self.tray_icon = pystray.Icon(APP_NAME, icon_img, APP_NAME, menu)
+        try:
+            self.tray_icon.run()
+        except Exception:
+            log_crash("pystray run failed")
+
+    def _build_pystray_menu(self):
+        import pystray
 
         paused = self.paused or not self.config.get("enabled", True)
-        menu = pystray.Menu(
+        return pystray.Menu(
             pystray.MenuItem(
                 "▶ Resume" if paused else "⏸ Pause",
-                self._toggle_pause,
+                self._on_pystray_toggle,
                 default=True,
             ),
-            pystray.MenuItem("⚙ Settings", self._open_settings),
+            pystray.MenuItem("⚙ Settings", self._on_pystray_settings),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("✕ Exit", self._exit),
+            pystray.MenuItem("✕ Exit", self._on_pystray_exit),
         )
 
-        self.tray_icon = pystray.Icon(
-            APP_NAME, icon_img, APP_NAME, menu
-        )
-        self.tray_icon.run()
+    def _on_pystray_toggle(self, icon, item):
+        self._toggle_pause()
+        icon.menu = self._build_pystray_menu()
 
-    def _toggle_pause(self, icon, item):
-        if self.paused:
-            self.paused = False
-            self.tray_icon.title = APP_NAME
-        else:
-            self.paused = True
-            self.tray_icon.title = f"{APP_NAME} (Paused)"
+    def _on_pystray_settings(self, icon=None, item=None):
+        self._open_settings()
 
-        paused = self.paused
-        icon.menu = pystray.Menu(
-            pystray.MenuItem(
-                "▶ Resume" if paused else "⏸ Pause",
-                self._toggle_pause,
-                default=True,
-            ),
-            pystray.MenuItem("⚙ Settings", self._open_settings),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("✕ Exit", self._exit),
-        )
+    def _on_pystray_exit(self, icon=None, item=None):
+        self.running = False
+        if self.tray_icon:
+            self.tray_icon.stop()
+
+    def _toggle_pause(self):
+        self.paused = not self.paused
 
     def _open_settings(self, icon=None, item=None):
         """Open the settings window."""
@@ -537,7 +696,7 @@ class MouseJiggler:
                 f"{CONFIG_FILE}"
             )
         except Exception as e:
-            print(f"Settings error: {e}", file=sys.stderr)
+            log_crash(f"Settings error: {e}")
 
     def _on_config_changed(self, config):
         """Called when settings are saved."""
@@ -545,19 +704,32 @@ class MouseJiggler:
         if not config.get("enabled", True):
             self.paused = True
 
-    def _exit(self, icon=None, item=None):
-        self.running = False
-        if self.tray_icon:
-            self.tray_icon.stop()
-
 
 # ── Entry point ──────────────────────────────────────────────────────────
 def main():
-    if not acquire_single_instance():
-        sys.exit(0)
+    try:
+        if not acquire_single_instance():
+            sys.exit(0)
 
-    app = MouseJiggler()
-    app.start()
+        app = MouseJiggler()
+        app.start()
+    except Exception:
+        log_crash("Fatal startup error")
+        if IS_MACOS:
+            # Show error dialog on macOS since there's no terminal
+            try:
+                import subprocess
+                subprocess.run([
+                    "osascript", "-e",
+                    f'display dialog "Mouse Jiggler crashed on startup.\\n\\n'
+                    f'Crash log: {CRASH_LOG}\\n\\n'
+                    f'Error: {traceback.format_exc()}\\n\\n'
+                    'Check the crash log for details." '
+                    'buttons {"OK"} default button "OK" with icon stop'
+                ], timeout=10)
+            except Exception:
+                pass
+        raise
 
 
 if __name__ == "__main__":
