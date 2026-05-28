@@ -15,9 +15,9 @@ import signal
 import sys
 import threading
 import time
-import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+
+# tkinter imported lazily in SettingsWindow (macOS PyInstaller needs Tcl/Tk bundled)
 
 # ── pystray + PIL for tray icon ──────────────────────────────────────────
 try:
@@ -305,6 +305,9 @@ class SettingsWindow:
             self.root.focus_force()
             return
 
+        import tkinter as tk
+        from tkinter import ttk
+
         self.root = tk.Tk()
         self.root.title(f"{APP_NAME} — Settings")
         self.root.resizable(False, False)
@@ -449,6 +452,21 @@ class MouseJiggler:
 
     def start(self):
         """Start the jiggle thread and tray icon."""
+        if IS_MACOS:
+            # On macOS, ensure PyObjC/pystray deps are available before we start
+            try:
+                import pystray._darwin  # noqa: force import check
+            except ImportError as e:
+                import subprocess
+                subprocess.run([
+                    "osascript", "-e",
+                    f'display dialog "Missing macOS dependency: {e}\\n\\n'
+                    'Run: pip3 install pyobjc-framework-Cocoa\\n\\n'
+                    'The app will now exit." '
+                    'buttons {{"OK"}} default button "OK" with icon stop'
+                ], timeout=10)
+                sys.exit(1)
+
         if self.config.get("enabled", True):
             self.running = True
             self.paused = False
@@ -507,7 +525,19 @@ class MouseJiggler:
 
     def _open_settings(self, icon=None, item=None):
         """Open the settings window."""
-        self.settings_win.open()
+        try:
+            self.settings_win.open()
+        except ImportError:
+            import tkinter.messagebox as mb
+            mb.showerror(
+                "Settings Unavailable",
+                "The settings window requires tkinter.\n\n"
+                "You can still Pause/Resume and Exit from the tray menu.\n"
+                "To change settings, edit the config file directly:\n"
+                f"{CONFIG_FILE}"
+            )
+        except Exception as e:
+            print(f"Settings error: {e}", file=sys.stderr)
 
     def _on_config_changed(self, config):
         """Called when settings are saved."""
