@@ -60,16 +60,11 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          # Find Tcl/Tk frameworks (needed for tkinter in bundled app)
-          TCL_LIB=$(python3 -c "import tkinter; print(tkinter.TCL_LIBRARY)")
-          TK_LIB=$(python3 -c "import tkinter; print(tkinter.TK_LIBRARY)")
-
           pyinstaller \
             --onefile --windowed \
             --name "MouseJiggler" \
             --add-data "mouse_jiggler.ico:." \
-            --add-data "$TCL_LIB:tcl" \
-            --add-data "$TK_LIB:tk" \
+            --hidden-import tkinter \
             --hidden-import AppKit \
             --hidden-import Foundation \
             --hidden-import objc \
