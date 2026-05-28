@@ -22,7 +22,7 @@
 |----------|---------|-------|
 | **Windows** | Win32 `SendInput` API | Hardware-level input — identical to a physical mouse |
 | **macOS** | CoreGraphics `CGEvent` | Low-level event posting via ctypes — no pyobjc needed |
-| **Linux** | `xdotool` | Install with `apt install xdotool` |
+| **Linux** | Xlib `XWarpPointer` | Low-level X11 via ctypes — no external tools needed |
 
 ## 🔒 Why IT Won't Flag It
 
@@ -94,6 +94,9 @@ Every push to `main` automatically builds on both platforms:
 |----------|--------|---------------|
 | `MouseJiggler.exe` | `windows-latest` (x64) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
 | `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
+| `MouseJiggler` | `ubuntu-22.04` (x64, glibc 2.35+) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
+
+Compatible with Debian 12+, Ubuntu 22.04+, Fedora 36+, Arch, and any distro shipping glibc ≥ 2.35.
 
 To create a release with both binaries attached:
 ```bash

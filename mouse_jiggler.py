@@ -148,38 +148,74 @@ elif IS_MACOS:
         _cg.CFRelease(event)
 
 elif IS_LINUX:
-    # Linux: use xdotool (usually available) or fall back gracefully
-    import subprocess
+    # Linux: Xlib via ctypes — self-contained, no xdotool needed
+    import ctypes
+    import ctypes.util
 
-    _xdotool_available = None
+    _xlib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("X11"))
 
-    def _check_xdotool():
-        global _xdotool_available
-        if _xdotool_available is None:
-            try:
-                subprocess.run(
-                    ["xdotool", "version"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    timeout=3,
-                )
-                _xdotool_available = True
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                _xdotool_available = False
-        return _xdotool_available
+    _xlib.XOpenDisplay.restype = ctypes.c_void_p
+    _xlib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    _xlib.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+    _xlib.XQueryPointer.restype = ctypes.c_int
+    _xlib.XQueryPointer.argtypes = [
+        ctypes.c_void_p, ctypes.c_ulong,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_uint),
+    ]
+
+    _xlib.XWarpPointer.argtypes = [
+        ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+        ctypes.c_int, ctypes.c_int, ctypes.c_uint, ctypes.c_uint,
+        ctypes.c_int, ctypes.c_int,
+    ]
+    _xlib.XFlush.argtypes = [ctypes.c_void_p]
+
+    _xlib.XDefaultRootWindow.restype = ctypes.c_ulong
+    _xlib.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+
+    def _get_display():
+        """Open X display. Returns (Display*, root_window) or (None, None)."""
+        try:
+            disp = _xlib.XOpenDisplay(None)
+            if not disp:
+                return None, None
+            root = _xlib.XDefaultRootWindow(disp)
+            return disp, root
+        except Exception:
+            return None, None
 
     def jiggle_mouse(pixels: int = DEFAULT_PIXELS):
-        """Linux: xdotool relative mouse movement."""
+        """Linux: Xlib XQueryPointer + XWarpPointer — self-contained, no xdotool."""
         dx = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
         dy = random.choice([-1, 1]) * random.randint(1, max(1, pixels))
 
-        if not _check_xdotool():
-            return  # silent no-op if xdotool is not installed
+        disp, root = _get_display()
+        if not disp:
+            return
 
-        subprocess.run(
-            ["xdotool", "mousemove_relative", "--", str(dx), str(dy)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            timeout=5,
-        )
+        try:
+            rx = ctypes.c_int()
+            ry = ctypes.c_int()
+            wx = ctypes.c_int()
+            wy = ctypes.c_int()
+            mask = ctypes.c_uint()
+
+            _xlib.XQueryPointer(
+                disp, root,
+                ctypes.byref(ctypes.c_void_p()), ctypes.byref(ctypes.c_void_p()),
+                ctypes.byref(rx), ctypes.byref(ry),
+                ctypes.byref(wx), ctypes.byref(wy),
+                ctypes.byref(mask),
+            )
+
+            _xlib.XWarpPointer(disp, 0, root, 0, 0, 0, 0, rx.value + dx, ry.value + dy)
+            _xlib.XFlush(disp)
+        finally:
+            _xlib.XCloseDisplay(disp)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
