@@ -13,15 +13,26 @@
 - **Randomized movement** — 1–N pixels in a random direction each tick — no predictable pattern
 - **Single-instance** — won't accidentally run twice
 - **Persistent config** — saves to your OS-native config directory
-- **Platform-native UI** — pystray on Windows/Linux, rumps on macOS
+- **Zero runtime dependencies** — each platform uses its native language (no Python, no runtimes)
 
 ## 🔧 How It Moves the Mouse
 
-| Platform | UI Framework | Mouse Backend |
-|----------|-------------|----------------|
-| **Windows** | C# (.NET 8) | Win32 `SendInput` API |
-| **macOS** | ObjC (native Cocoa) | CoreGraphics `CGEvent` |
-| **Linux** | pystray + tkinter | Xlib `XWarpPointer` via ctypes |
+| Platform | Language | UI Framework | Mouse Backend |
+|----------|----------|-------------|----------------|
+| **Windows** | C# (.NET 8) | WinForms | Win32 `SendInput` API |
+| **macOS** | ObjC | Cocoa | CoreGraphics `CGEvent` |
+| **Linux** | Go | systray | Xlib `XWarpPointer` |
+
+## 🔒 Why IT Won't Flag It
+
+| Concern | How Mouse Jiggler handles it |
+|---------|------------------------------|
+| **Input detection** | Uses OS-native input APIs — identical to physical hardware |
+| **Services/daemons** | None — runs as a normal user process |
+| **Registry/plists** | Zero system writes — config is a plain JSON file |
+| **Admin/root** | None needed — standard user permissions |
+| **Startup** | No auto-start entries — you launch it when you need it |
+| **Pattern detection** | Random direction + random distance — no repeating pattern |
 
 ## 🚀 Quick Start
 
@@ -46,10 +57,23 @@ Unzip, then right-click → **Open** the first time (unsigned developer).
 
 To build from source:
 ```bash
-pip3 install Pillow
-python3 generate_macos_icon.py AppIcon.icns
 clang -O2 -framework Cocoa -framework CoreGraphics -framework ServiceManagement \
   -o MouseJiggler mouse_jiggler_macos.m
+```
+
+### Linux
+
+Download the latest `MouseJiggler` binary from [GitHub Actions](https://github.com/jphermans/mouse-jiggler/actions).
+
+Make it executable and run:
+```bash
+chmod +x MouseJiggler && ./MouseJiggler
+```
+
+To build from source:
+```bash
+sudo apt install libx11-dev libgtk-3-dev libappindicator3-dev
+go build -ldflags="-s -w" -o MouseJiggler mouse_jiggler_linux.go
 ```
 
 ## ⚙️ Settings
@@ -59,8 +83,9 @@ clang -O2 -framework Cocoa -framework CoreGraphics -framework ServiceManagement 
 | **Interval** | 30s–10min | 60s | Time between jiggles |
 | **Max pixels** | 1–10 px | 3px | Maximum random offset per move |
 
-**Windows:** Right-click tray icon → "Settings" (WinForms GUI).
-**macOS:** Menu bar presets (Interval/Pixels submenus) or "Open Config File".
+- **Windows:** Right-click tray icon → "Settings" (WinForms GUI with sliders)
+- **macOS:** Menu bar presets (Interval/Pixels submenus) or "Open Config File"
+- **Linux:** Right-click tray icon → Interval/Pixels submenus or "Open Config File"
 
 | Platform | Config path |
 |----------|-------------|
@@ -68,35 +93,15 @@ clang -O2 -framework Cocoa -framework CoreGraphics -framework ServiceManagement 
 | macOS | `~/Library/Application Support/Mouse Jiggler/config.json` |
 | Linux | `~/.config/mouse-jiggler/config.json` |
 
-## 📦 Build Standalone Binary
-
-### Windows
-```bash
-dotnet publish MouseJiggler.Windows.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o dist
-```
-
-### macOS
-```bash
-swiftc -O -o MouseJiggler mouse_jiggler_macos.swift
-# Output: MouseJiggler (Mach-O executable)
-```
-
-### Linux
-```bash
-pip install pyinstaller pystray Pillow
-sudo apt install python3-tk  # for settings GUI
-pyinstaller --onefile --windowed --name "MouseJiggler" --add-data "mouse_jiggler.ico:." mouse_jiggler.py
-```
-
 ## 🤖 GitHub Actions
 
-Every push to `main` automatically builds for all three platforms:
+Every push to `main` automatically builds for all three platforms. No Python, no pip — each platform uses its native toolchain.
 
-| Artifact | Runner | Source File |
-|----------|--------|-------------|
-| `MouseJiggler.exe` | `windows-latest` (x64) | C# (.NET 8) |
-| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | ObjC (native) |
-| `MouseJiggler` | `ubuntu-22.04` (x64) | `mouse_jiggler.py` |
+| Artifact | Runner | Language |
+|----------|--------|----------|
+| `MouseJiggler.exe` | `windows-latest` (x64) | C# / .NET 8 |
+| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | ObjC / clang |
+| `MouseJiggler` | `ubuntu-22.04` (x64) | Go |
 
 Download the latest from the [Actions tab](https://github.com/jphermans/mouse-jiggler/actions).
 
@@ -109,18 +114,19 @@ git tag v1.0.0 && git push origin v1.0.0
 
 ```
 mouse-jiggler/
-├── mouse_jiggler_windows.cs    # Windows (C# .NET 8)
-├── mouse_jiggler_macos.m       # macOS (ObjC — native Cocoa)
-├── mouse_jiggler.py            # Linux (pystray + tkinter)
-├── generate_macos_icon.py     # macOS app icon generator
-├── mouse_jiggler.ico          # Application icon (multi-res)
-├── generate_icon.py          # Icon generator script
-├── icon_preview.png          # Icon preview for README
-├── requirements.txt          # Windows/Linux dependencies
-├── build.bat                 # One-click PyInstaller build (Windows)
+├── mouse_jiggler_windows.cs     # Windows (C# .NET 8)
+├── MouseJiggler.Windows.csproj  # Windows project file
+├── mouse_jiggler_macos.m        # macOS (ObjC — native Cocoa)
+├── mouse_jiggler_linux.go       # Linux (Go + systray + Xlib)
+├── go.mod                       # Go module file
+├── AppIcon.icns                 # macOS app icon
+├── generate_macos_icon.py       # macOS icon generator
+├── generate_readme_banner.py    # README banner generator
+├── readme_banner.png            # README hero image
+├── mouse_jiggler.ico            # Windows icon (legacy)
 ├── .gitignore
 └── .github/workflows/
-    └── build.yml             # CI: auto-build for Windows + macOS + Linux
+    └── build.yml                # CI: build all three platforms
 ```
 
 ## 📄 License

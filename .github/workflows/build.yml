@@ -96,22 +96,22 @@ jobs:
           name: MouseJiggler-macOS
           path: dist/MouseJiggler-macOS.zip
           retention-days: 1
-
-  # ── Linux (x64, glibc 2.35+) ──────────────────────────────────────────
+  # ── Linux (x64) ────────────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: |
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Install build deps
+        run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-tk
-      - run: |
-          python3 -m pip install --upgrade pip
-          pip3 install -r requirements.txt
-      - run: |
-          pyinstaller --onefile --windowed --name "MouseJiggler" --add-data "mouse_jiggler.ico:." mouse_jiggler.py
+          sudo apt-get install -y -qq libx11-dev libgtk-3-dev libappindicator3-dev
+      - name: Build with Go
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=1 go build -ldflags="-s -w" -o dist/MouseJiggler mouse_jiggler_linux.go
       - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-Linux
