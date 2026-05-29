@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate app icon
         run: |
-          pip3 install Pillow
+          pip3 install --break-system-packages Pillow
           python3 generate_macos_icon.py AppIcon.icns
 
       - name: Build ObjC binary
