@@ -25,7 +25,6 @@ jobs:
           dotnet publish MouseJiggler.Windows.csproj `
             -c Release `
             -r win-x64 `
-            --self-contained true `
             -p:PublishSingleFile=true `
             -p:AssemblyName=MouseJiggler `
             -o dist
