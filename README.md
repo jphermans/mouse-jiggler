@@ -84,7 +84,7 @@ go build -ldflags="-s -w" -o MouseJiggler mouse_jiggler_linux.go
 | **Interval** | 30s–10min | 60s | Time between jiggles |
 | **Max pixels** | 1–10 px | 3px | Maximum random offset per move |
 
-- **Windows:** Right-click tray icon → "Settings" (WinForms GUI with sliders)
+- **Windows:** Right-click tray icon → "Settings" (WinForms GUI with sliders) or "☀ Light Mode / 🌙 Dark Mode" toggle in the menu
 - **macOS:** Menu bar presets (Interval/Pixels submenus) or "Open Config File"
 - **Linux:** Edit the config file directly — reloaded on each tick. `Ctrl+C` to stop.
 
