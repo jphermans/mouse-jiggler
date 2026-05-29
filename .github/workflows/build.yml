@@ -56,20 +56,14 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install -r requirements.txt
+          pip3 install rumps Pillow pyinstaller
 
       - name: Build with PyInstaller
         run: |
           pyinstaller \
             --onefile --windowed \
             --name "MouseJiggler" \
-            --add-data "mouse_jiggler.ico:." \
-            --hidden-import tkinter \
-            --hidden-import AppKit \
-            --hidden-import Foundation \
-            --hidden-import objc \
-            --hidden-import Quartz \
-            mouse_jiggler.py
+            mouse_jiggler_macos.py
 
       - name: Package as zip
         run: |

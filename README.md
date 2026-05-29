@@ -9,34 +9,23 @@
 
 ## ✨ Features
 
-- **Runs in the system tray** — right-click for Pause, Settings, or Exit
-- **Settings GUI** — configure interval (5–600s) and pixel range (1–10px)
+- **Runs in the system tray / menu bar** — click for Pause, Settings, or Quit
 - **Randomized movement** — 1–N pixels in a random direction each tick — no predictable pattern
 - **Single-instance** — won't accidentally run twice
 - **Persistent config** — saves to your OS-native config directory
-- **Cross-platform** — native mouse input on every OS, zero extra dependencies
+- **Platform-native UI** — pystray on Windows/Linux, rumps on macOS
 
 ## 🔧 How It Moves the Mouse
 
-| Platform | Backend | Notes |
-|----------|---------|-------|
-| **Windows** | Win32 `SendInput` API | Hardware-level input — identical to a physical mouse |
-| **macOS** | CoreGraphics `CGEvent` | Low-level event posting via ctypes — no pyobjc needed |
-| **Linux** | Xlib `XWarpPointer` | Low-level X11 via ctypes — no external tools needed |
-
-## 🔒 Why IT Won't Flag It
-
-| Concern | How Mouse Jiggler handles it |
-|---------|------------------------------|
-| **Input detection** | Uses OS-native input APIs at the hardware layer — identical to a physical mouse |
-| **Services** | No services or daemons — runs as a normal user process |
-| **Registry / plists** | Zero system writes — config is a plain JSON file |
-| **Admin / root** | None needed — runs under standard user permissions |
-| **Startup** | No auto-start entries — you launch it when you need it |
-| **Pattern detection** | Random direction + random distance = no repeating pattern |
-| **Dependencies** | Pure Python + `pystray` + `Pillow` — no sketchy DLLs or drivers |
+| Platform | UI Framework | Mouse Backend |
+|----------|-------------|----------------|
+| **Windows** | pystray + tkinter | Win32 `SendInput` API |
+| **macOS** | rumps (native AppKit) | CoreGraphics `CGEvent` via ctypes |
+| **Linux** | pystray + tkinter | Xlib `XWarpPointer` via ctypes |
 
 ## 🚀 Quick Start
+
+### Windows / Linux
 
 **Requirements:** Python 3.9+
 
@@ -45,26 +34,26 @@ pip install pystray Pillow
 python mouse_jiggler.py
 ```
 
-The icon appears in your system tray. Done.
+### macOS
 
-### macOS Note
+**Requirements:** Python 3.9+
 
-macOS requires Accessibility permission for apps that simulate mouse input. On first run:
-1. Open **System Settings → Privacy & Security → Accessibility**
-2. Click the **+** button and add the app (or drag it in)
-3. Toggle the switch on
+```bash
+pip3 install rumps Pillow
+python3 mouse_jiggler_macos.py
+```
 
-You'll only need to do this once.
+> **Note:** macOS requires Accessibility permission. On first run, open **System Settings → Privacy & Security → Accessibility** and enable the app.
 
 ## ⚙️ Settings
 
 | Setting | Range | Default | Description |
 |---------|-------|---------|-------------|
-| **Interval** | 5–600 seconds | 60s | Time between jiggles |
+| **Interval** | 30s–10min | 60s | Time between jiggles |
 | **Max pixels** | 1–10 px | 3px | Maximum random offset per move |
-| **Enabled** | on/off | on | Pause/resume jiggling |
 
-Settings are saved automatically:
+**Windows / Linux:** Settings open via tray menu → "⚙ Settings" (tkinter GUI).
+**macOS:** Settings changed via menu bar presets (Interval/Pixels submenus) or edit `config.json` directly ("Open Config File").
 
 | Platform | Config path |
 |----------|-------------|
@@ -74,31 +63,38 @@ Settings are saved automatically:
 
 ## 📦 Build Standalone Binary
 
+### Windows
 ```bash
-pip install pyinstaller
-# Windows
+pip install pyinstaller pystray Pillow
 pyinstaller --onefile --windowed --noconsole --name "MouseJiggler" --add-data "mouse_jiggler.ico;." mouse_jiggler.py
-# macOS
+```
+
+### macOS
+```bash
+pip3 install pyinstaller rumps Pillow
+pyinstaller --onefile --windowed --name "MouseJiggler" mouse_jiggler_macos.py
+```
+
+### Linux
+```bash
+pip install pyinstaller pystray Pillow
+sudo apt install python3-tk  # for settings GUI
 pyinstaller --onefile --windowed --name "MouseJiggler" --add-data "mouse_jiggler.ico:." mouse_jiggler.py
 ```
 
-Or run `build.bat` on Windows. Output lands in `dist/`.
-
-No Python installation needed on the target machine.
-
 ## 🤖 GitHub Actions
 
-Every push to `main` automatically builds on both platforms:
+Every push to `main` automatically builds for all three platforms:
 
-| Artifact | Runner | Download from |
-|----------|--------|---------------|
-| `MouseJiggler.exe` | `windows-latest` (x64) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
-| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
-| `MouseJiggler` | `ubuntu-22.04` (x64, glibc 2.35+) | [Actions tab](https://github.com/jphermans/mouse-jiggler/actions) |
+| Artifact | Runner | Source File |
+|----------|--------|-------------|
+| `MouseJiggler.exe` | `windows-latest` (x64) | `mouse_jiggler.py` |
+| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | `mouse_jiggler_macos.py` |
+| `MouseJiggler` | `ubuntu-22.04` (x64) | `mouse_jiggler.py` |
 
-Compatible with Debian 12+, Ubuntu 22.04+, Fedora 36+, Arch, and any distro shipping glibc ≥ 2.35.
+Download the latest from the [Actions tab](https://github.com/jphermans/mouse-jiggler/actions).
 
-To create a release with both binaries attached:
+To create a release with all binaries:
 ```bash
 git tag v1.0.0 && git push origin v1.0.0
 ```
@@ -107,15 +103,16 @@ git tag v1.0.0 && git push origin v1.0.0
 
 ```
 mouse-jiggler/
-├── mouse_jiggler.py          # Main application (cross-platform)
+├── mouse_jiggler.py          # Windows + Linux (pystray)
+├── mouse_jiggler_macos.py    # macOS (rumps — native AppKit)
 ├── mouse_jiggler.ico         # Application icon (multi-res)
 ├── generate_icon.py          # Icon generator script
 ├── icon_preview.png          # Icon preview for README
-├── requirements.txt          # Python dependencies
+├── requirements.txt          # Windows/Linux dependencies
 ├── build.bat                 # One-click PyInstaller build (Windows)
 ├── .gitignore
 └── .github/workflows/
-    └── build.yml             # CI: auto-build for Windows + macOS
+    └── build.yml             # CI: auto-build for Windows + macOS + Linux
 ```
 
 ## 📄 License
