@@ -1,7 +1,11 @@
 import AppKit
 import CoreGraphics
 
-// ── Configuration ────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//  Mouse Jiggler — macOS menu bar app
+//  Compile: swiftc -framework AppKit -framework CoreGraphics -o MouseJiggler mouse_jiggler_macos.swift
+// ═══════════════════════════════════════════════════════════════════════════
+
 let APP_NAME = "Mouse Jiggler"
 let CONFIG_DIR = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent("Library/Application Support/\(APP_NAME)")
@@ -27,7 +31,7 @@ func saveConfig(_ config: Config) {
     }
 }
 
-// ── Mouse Movement (CoreGraphics) ────────────────────────────────────────
+// ── Mouse Movement ───────────────────────────────────────────────────────
 func jiggleMouse(pixels: Int) {
     let dx = Int.random(in: 1...max(1, pixels)) * (Bool.random() ? 1 : -1)
     let dy = Int.random(in: 1...max(1, pixels)) * (Bool.random() ? 1 : -1)
@@ -46,95 +50,84 @@ func jiggleMouse(pixels: Int) {
     moveEvent.post(tap: .cghidEventTap)
 }
 
-// ── Menu Bar App ─────────────────────────────────────────────────────────
+// ── Menu Bar Icon ────────────────────────────────────────────────────────
+func makeIconImage() -> NSImage {
+    let size = NSSize(width: 18, height: 18)
+    let image = NSImage(size: size)
+    image.isTemplate = true
+
+    image.lockFocus()
+    NSColor.controlTextColor.setFill()
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: 3, y: 2))
+    path.line(to: NSPoint(x: 3, y: 13))
+    path.line(to: NSPoint(x: 7, y: 10))
+    path.line(to: NSPoint(x: 10, y: 15))
+    path.line(to: NSPoint(x: 13, y: 13))
+    path.line(to: NSPoint(x: 8, y: 8))
+    path.line(to: NSPoint(x: 12, y: 5))
+    path.close()
+    path.fill()
+    image.unlockFocus()
+    return image
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  App Delegate
+// ═══════════════════════════════════════════════════════════════════════════
+@main
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var config = loadConfig()
     var running = false
     var paused = false
     var jiggleThread: Thread?
-    var pauseMenuItem: NSMenuItem!
-    var intervalMenu: NSMenu!
-    var pixelsMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide from dock — menu bar only
         NSApp.setActivationPolicy(.accessory)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        updateIcon()
+        statusItem.button?.image = makeIconImage()
+        rebuildMenu()
 
-        buildMenu()
-
-        // Start jiggling
         if config.enabled {
             startJiggling()
         }
     }
 
-    func updateIcon() {
-        // Create a simple menu bar icon programmatically
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size)
-        image.isTemplate = true  // adapts to dark/light mode
-
-        image.lockFocus()
-        NSColor.controlTextColor.setFill()
-
-        // Draw a small mouse pointer shape
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: 3, y: 2))
-        path.line(to: NSPoint(x: 3, y: 13))
-        path.line(to: NSPoint(x: 7, y: 10))
-        path.line(to: NSPoint(x: 10, y: 15))
-        path.line(to: NSPoint(x: 13, y: 13))
-        path.line(to: NSPoint(x: 8, y: 8))
-        path.line(to: NSPoint(x: 12, y: 5))
-        path.close()
-        path.fill()
-
-        image.unlockFocus()
-        statusItem.button?.image = image
-    }
-
-    func buildMenu() {
+    func rebuildMenu() {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
         // Pause / Resume
-        pauseMenuItem = NSMenuItem(
+        let pauseItem = NSMenuItem(
             title: paused ? "▶ Resume" : "⏸ Pause",
             action: #selector(togglePause),
             keyEquivalent: ""
         )
-        pauseMenuItem.target = self
-        menu.addItem(pauseMenuItem)
+        pauseItem.target = self
+        menu.addItem(pauseItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // Interval submenu
+        // Interval
         let intervalItem = NSMenuItem(title: "Interval", action: nil, keyEquivalent: "")
-        intervalMenu = NSMenu()
-        let current = Int(config.interval)
+        let intervalMenu = NSMenu()
         for secs in [30, 60, 120, 300, 600] {
-            let label = secs < 120 ? "\(secs)s" : "\(secs/60)min"
+            let label = secs < 120 ? "\(secs)s" : "\(secs / 60)min"
             let item = NSMenuItem(title: label, action: #selector(setInterval(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = secs == current ? .on : .off
-            item.tag = secs
+            item.target = self; item.state = Int(config.interval) == secs ? .on : .off; item.tag = secs
             intervalMenu.addItem(item)
         }
         intervalItem.submenu = intervalMenu
         menu.addItem(intervalItem)
 
-        // Pixels submenu
+        // Pixels
         let pixelsItem = NSMenuItem(title: "Pixels", action: nil, keyEquivalent: "")
-        pixelsMenu = NSMenu()
+        let pixelsMenu = NSMenu()
         for px in [1, 2, 3, 5, 10] {
             let item = NSMenuItem(title: "\(px)px", action: #selector(setPixels(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = px == config.pixels ? .on : .off
-            item.tag = px
+            item.target = self; item.state = config.pixels == px ? .on : .off; item.tag = px
             pixelsMenu.addItem(item)
         }
         pixelsItem.submenu = pixelsMenu
@@ -143,40 +136,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
 
         // Config
-        let configItem = NSMenuItem(
-            title: "Open Config File",
-            action: #selector(openConfig),
-            keyEquivalent: ""
-        )
+        let configItem = NSMenuItem(title: "Open Config File", action: #selector(openConfig), keyEquivalent: "")
         configItem.target = self
         menu.addItem(configItem)
 
         menu.addItem(NSMenuItem.separator())
 
         // Quit
-        let quitItem = NSMenuItem(
-            title: "Quit",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
-        )
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
         statusItem.menu = menu
     }
 
-    func rebuildMenu() {
-        if let menu = statusItem.menu {
-            menu.removeAllItems()
-        }
-        buildMenu()
-    }
-
     // ── Jiggle Thread ──────────────────────────────────────────────────
     func startJiggling() {
         guard !running else { return }
-        running = true
-        paused = false
+        running = true; paused = false
         jiggleThread = Thread { [weak self] in
             while self?.running == true {
                 if self?.paused == false {
@@ -189,39 +166,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // ── Menu Actions ───────────────────────────────────────────────────
-    @objc func togglePause() {
-        paused.toggle()
-        rebuildMenu()
-    }
-
-    @objc func setInterval(_ sender: NSMenuItem) {
-        config.interval = Double(sender.tag)
-        saveConfig(config)
-        rebuildMenu()
-    }
-
-    @objc func setPixels(_ sender: NSMenuItem) {
-        config.pixels = sender.tag
-        saveConfig(config)
-        rebuildMenu()
-    }
+    @objc func togglePause() { paused.toggle(); rebuildMenu() }
+    @objc func setInterval(_ sender: NSMenuItem) { config.interval = Double(sender.tag); saveConfig(config); rebuildMenu() }
+    @objc func setPixels(_ sender: NSMenuItem) { config.pixels = sender.tag; saveConfig(config); rebuildMenu() }
 
     @objc func openConfig() {
         try? FileManager.default.createDirectory(at: CONFIG_DIR, withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: CONFIG_FILE.path) {
-            saveConfig(config)
-        }
+        if !FileManager.default.fileExists(atPath: CONFIG_FILE.path) { saveConfig(config) }
         NSWorkspace.shared.open(CONFIG_FILE)
     }
 
-    @objc func quitApp() {
-        running = false
-        NSApp.terminate(nil)
-    }
+    @objc func quitApp() { running = false; NSApp.terminate(nil) }
 }
-
-// ── Entry Point ──────────────────────────────────────────────────────────
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.run()
