@@ -1,5 +1,7 @@
+using Microsoft.Win32;
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -34,7 +36,7 @@ static class NativeMethods
 }
 
 // ── Config ───────────────────────────────────────────────────────────────
-record Config(int Interval = 60, int Pixels = 3, bool Enabled = true);
+record Config(int Interval = 60, int Pixels = 3, bool Enabled = true, bool LaunchAtStartup = false);
 
 static class ConfigManager
 {
@@ -60,16 +62,47 @@ static class ConfigManager
     }
 }
 
+// ── Launch at Startup (Registry) ─────────────────────────────────────────
+static class StartupManager
+{
+    const string RunKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    const string AppName = "MouseJiggler";
+
+    public static bool IsEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+        return key?.GetValue(AppName) != null;
+    }
+
+    public static void SetEnabled(bool enable)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey, true);
+        if (key == null) return;
+        if (enable)
+            key.SetValue(AppName, $"\"{Application.ExecutablePath}\"");
+        else
+            key.DeleteValue(AppName, false);
+    }
+}
+
 // ── Settings Form ────────────────────────────────────────────────────────
 class SettingsForm : Form
 {
-    readonly TrackBar intervalBar = new() { Minimum = 5, Maximum = 600, TickFrequency = 30, Width = 300 };
-    readonly TrackBar pixelsBar = new() { Minimum = 1, Maximum = 10, Width = 300 };
+    readonly TrackBar intervalBar = new() { Minimum = 5, Maximum = 600, TickFrequency = 30, Width = 340 };
+    readonly TrackBar pixelsBar = new() { Minimum = 1, Maximum = 10, TickFrequency = 1, Width = 340 };
     readonly CheckBox enabledCheck = new() { Text = "Enable jiggling" };
+    readonly CheckBox startupCheck = new() { Text = "Launch at Windows startup" };
     readonly Label intervalLabel = new(), pixelsLabel = new();
-    readonly Button saveBtn = new() { Text = "Save" }, cancelBtn = new() { Text = "Cancel" };
+    readonly Label titleLabel = new();
+    readonly Button saveBtn = new() { Text = "Save", Width = 80, Height = 30 };
+    readonly Button cancelBtn = new() { Text = "Cancel", Width = 80, Height = 30 };
+    readonly PictureBox iconBox = new() { Size = new Size(48, 48) };
 
     public Config Result { get; private set; }
+    readonly Color bg = Color.FromArgb(32, 32, 36);
+    readonly Color fg = Color.FromArgb(220, 220, 228);
+    readonly Color accent = Color.FromArgb(76, 175, 80);
+    readonly Color muted = Color.FromArgb(140, 145, 155);
 
     public SettingsForm(Config current)
     {
@@ -78,32 +111,163 @@ class SettingsForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        Size = new Size(380, 280);
-        BackColor = Color.FromArgb(43, 43, 43);
-        ForeColor = Color.FromArgb(224, 224, 224);
+        Size = new Size(460, 360);
+        BackColor = bg;
+        ForeColor = fg;
 
+        // Icon
+        iconBox.Image = SystemIcons.Application.ToBitmap();
+        iconBox.SizeMode = PictureBoxSizeMode.Zoom;
+        iconBox.Location = new Point(20, 20);
+
+        // Title
+        titleLabel.Text = "Mouse Jiggler";
+        titleLabel.Font = new Font("Segoe UI", 16, FontStyle.Bold);
+        titleLabel.ForeColor = accent;
+        titleLabel.Location = new Point(80, 22);
+        titleLabel.AutoSize = true;
+
+        var subtitle = new Label
+        {
+            Text = "Keep your screen awake",
+            Font = new Font("Segoe UI", 9),
+            ForeColor = muted,
+            Location = new Point(82, 50),
+            AutoSize = true
+        };
+
+        // Separator
+        var sep = new Panel { Height = 1, Width = 410, Location = new Point(20, 78), BackColor = Color.FromArgb(60, 60, 68) };
+
+        // Enable checkbox
         enabledCheck.Checked = current.Enabled;
-        enabledCheck.Location = new Point(20, 15);
-        enabledCheck.BackColor = BackColor; enabledCheck.ForeColor = ForeColor;
+        enabledCheck.Location = new Point(20, 95);
+        enabledCheck.BackColor = bg; enabledCheck.ForeColor = fg;
+        enabledCheck.Font = new Font("Segoe UI", 10);
 
+        // Interval
         intervalBar.Value = current.Interval;
         intervalLabel.Text = $"Interval: {current.Interval}s";
-        intervalLabel.Location = new Point(20, 50);
-        intervalBar.Location = new Point(20, 75);
+        intervalLabel.Location = new Point(20, 125);
+        intervalLabel.ForeColor = fg;
+        intervalLabel.Font = new Font("Segoe UI", 9);
+        intervalBar.Location = new Point(20, 148);
         intervalBar.Scroll += (_, _) => intervalLabel.Text = $"Interval: {intervalBar.Value}s";
 
+        // Pixels
         pixelsBar.Value = current.Pixels;
-        pixelsLabel.Text = $"Max pixels: {current.Pixels}px";
-        pixelsLabel.Location = new Point(20, 130);
-        pixelsBar.Location = new Point(20, 155);
-        pixelsBar.Scroll += (_, _) => pixelsLabel.Text = $"Max pixels: {pixelsBar.Value}px";
+        pixelsLabel.Text = $"Max pixels per move: {current.Pixels}px";
+        pixelsLabel.Location = new Point(20, 190);
+        pixelsLabel.ForeColor = fg;
+        pixelsLabel.Font = new Font("Segoe UI", 9);
+        pixelsBar.Location = new Point(20, 213);
+        pixelsBar.Scroll += (_, _) => pixelsLabel.Text = $"Max pixels per move: {pixelsBar.Value}px";
 
-        saveBtn.Location = new Point(190, 200);
-        saveBtn.Click += (_, _) => { Result = new(intervalBar.Value, pixelsBar.Value, enabledCheck.Checked); DialogResult = DialogResult.OK; Close(); };
-        cancelBtn.Location = new Point(280, 200);
+        // Launch at startup
+        startupCheck.Checked = StartupManager.IsEnabled();
+        startupCheck.Location = new Point(20, 260);
+        startupCheck.BackColor = bg; startupCheck.ForeColor = fg;
+        startupCheck.Font = new Font("Segoe UI", 10);
+
+        // Buttons
+        saveBtn.Location = new Point(260, 275);
+        saveBtn.FlatStyle = FlatStyle.Flat;
+        saveBtn.BackColor = accent; saveBtn.ForeColor = Color.White;
+        saveBtn.FlatAppearance.BorderSize = 0;
+        saveBtn.Click += (_, _) => {
+            Result = new(intervalBar.Value, pixelsBar.Value, enabledCheck.Checked, Result.LaunchAtStartup);
+            StartupManager.SetEnabled(startupCheck.Checked);
+            DialogResult = DialogResult.OK; Close();
+        };
+
+        cancelBtn.Location = new Point(350, 275);
+        cancelBtn.FlatStyle = FlatStyle.Flat;
+        cancelBtn.BackColor = Color.FromArgb(60, 60, 68);
+        cancelBtn.ForeColor = fg;
         cancelBtn.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
-        Controls.AddRange([enabledCheck, intervalLabel, intervalBar, pixelsLabel, pixelsBar, saveBtn, cancelBtn]);
+        Controls.AddRange([
+            iconBox, titleLabel, subtitle, sep,
+            enabledCheck, intervalLabel, intervalBar, pixelsLabel, pixelsBar,
+            startupCheck, saveBtn, cancelBtn
+        ]);
+    }
+}
+
+// ── About Dialog ─────────────────────────────────────────────────────────
+static class AboutDialog
+{
+    public static void Show()
+    {
+        var form = new Form
+        {
+            Text = "About Mouse Jiggler",
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false, MinimizeBox = false,
+            StartPosition = FormStartPosition.CenterScreen,
+            Size = new Size(380, 260),
+            BackColor = Color.FromArgb(32, 32, 36),
+            ForeColor = Color.FromArgb(220, 220, 228)
+        };
+
+        var icon = new PictureBox
+        {
+            Image = SystemIcons.Application.ToBitmap(),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            Size = new Size(64, 64),
+            Location = new Point(30, 25)
+        };
+
+        var title = new Label
+        {
+            Text = "Mouse Jiggler",
+            Font = new Font("Segoe UI", 14, FontStyle.Bold),
+            ForeColor = Color.FromArgb(76, 175, 80),
+            Location = new Point(110, 20),
+            AutoSize = true
+        };
+
+        var version = new Label
+        {
+            Text = "Version 1.0.0",
+            Font = new Font("Segoe UI", 9),
+            ForeColor = Color.FromArgb(140, 145, 155),
+            Location = new Point(112, 48),
+            AutoSize = true
+        };
+
+        var desc = new Label
+        {
+            Text = "Keeps your screen awake with imperceptible\nmouse movement from the system tray.\n\nNo services. No registry keys. No admin rights.\nUses Win32 SendInput — indistinguishable\nfrom real hardware input.",
+            Font = new Font("Segoe UI", 9),
+            ForeColor = Color.FromArgb(180, 185, 195),
+            Location = new Point(30, 100),
+            AutoSize = true
+        };
+
+        var creator = new Label
+        {
+            Text = "Created by Jean-Pierre Hermans\ngithub.com/jphermans/mouse-jiggler",
+            Font = new Font("Segoe UI", 8),
+            ForeColor = Color.FromArgb(120, 125, 135),
+            Location = new Point(30, 185),
+            AutoSize = true
+        };
+
+        var okBtn = new Button
+        {
+            Text = "OK",
+            Width = 80,
+            Location = new Point(275, 185),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(76, 175, 80),
+            ForeColor = Color.White
+        };
+        okBtn.FlatAppearance.BorderSize = 0;
+        okBtn.Click += (_, _) => form.Close();
+
+        form.Controls.AddRange([icon, title, version, desc, creator, okBtn]);
+        form.ShowDialog();
     }
 }
 
@@ -128,32 +292,37 @@ class JigglerApp : ApplicationContext
             ContextMenuStrip = BuildMenu()
         };
 
+        trayIcon.DoubleClick += (_, _) => OpenSettings();
+
         if (config.Enabled) StartJiggling();
     }
 
-    static Icon MakeIcon()
+    Icon MakeIcon()
+    {
+        // Use embedded icon from resources, fall back to generated
+        try
+        {
+            using var stream = GetType().Assembly.GetManifestResourceStream("MouseJiggler.mouse_jiggler.ico");
+            if (stream != null) return new Icon(stream);
+        }
+        catch { }
+
+        return GenerateIcon();
+    }
+
+    static Icon GenerateIcon()
     {
         var bmp = new Bitmap(32, 32);
         using var g = Graphics.FromImage(bmp);
         g.Clear(Color.Transparent);
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
 
-        // Green circle background
         using var brush = new SolidBrush(Color.FromArgb(76, 175, 80));
         g.FillEllipse(brush, 1, 1, 30, 30);
 
-        // White mouse pointer
-        using var pen = new Pen(Color.White, 2);
-        var cursor = new Point[] {
-            new(7,24), new(10,18), new(15,22), new(20,14), new(18,9), new(25,7),
-        };
-        g.DrawLines(pen, cursor);
-        // Fill cursor
         using var cursorBrush = new SolidBrush(Color.White);
-        var fillPts = new Point[] {
-            new(7,24), new(10,18), new(15,22), new(20,14), new(18,9), new(25,7),
-        };
-        g.FillPolygon(cursorBrush, fillPts, System.Drawing.Drawing2D.FillMode.Winding);
+        var pts = new Point[] { new(7,24), new(10,18), new(15,22), new(20,14), new(18,9), new(25,7) };
+        g.FillPolygon(cursorBrush, pts, FillMode.Winding);
 
         return Icon.FromHandle(bmp.GetHicon());
     }
@@ -161,11 +330,76 @@ class JigglerApp : ApplicationContext
     ContextMenuStrip BuildMenu()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add(paused ? "▶ Resume" : "⏸ Pause", null, (_, _) => { paused = !paused; trayIcon.ContextMenuStrip = BuildMenu(); });
+        menu.Renderer = new DarkToolStripRenderer();
+
+        var pauseItem = menu.Items.Add(paused ? "▶ Resume" : "⏸ Pause", null, (_, _) =>
+        {
+            paused = !paused;
+            trayIcon.Text = paused ? "Mouse Jiggler (Paused)" : "Mouse Jiggler";
+            trayIcon.ContextMenuStrip = BuildMenu();
+        });
+        pauseItem.Font = new Font("Segoe UI", 9, FontStyle.Bold);
+
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Settings", null, (_, _) => OpenSettings());
+
+        var intervalItem = new ToolStripMenuItem("Interval");
+        foreach (var secs in new[] { 30, 60, 120, 300, 600 })
+        {
+            var label = secs < 120 ? $"{secs}s" : $"{secs / 60}min";
+            var item = intervalItem.DropDownItems.Add(label, null, (_, _) =>
+            {
+                config = config with { Interval = secs };
+                ConfigManager.Save(config);
+                trayIcon.ContextMenuStrip = BuildMenu();
+            });
+            if (secs == config.Interval) item.Font = new Font(item.Font!, FontStyle.Bold);
+        }
+        menu.Items.Add(intervalItem);
+
+        var pixelsItem = new ToolStripMenuItem("Pixels");
+        foreach (var px in new[] { 1, 2, 3, 5, 10 })
+        {
+            var item = pixelsItem.DropDownItems.Add($"{px}px", null, (_, _) =>
+            {
+                config = config with { Pixels = px };
+                ConfigManager.Save(config);
+                trayIcon.ContextMenuStrip = BuildMenu();
+            });
+            if (px == config.Pixels) item.Font = new Font(item.Font!, FontStyle.Bold);
+        }
+        menu.Items.Add(pixelsItem);
+
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => { running = false; trayIcon.Visible = false; Application.Exit(); });
+
+        var startupItem = menu.Items.Add("Launch at Startup", null, (_, _) =>
+        {
+            var enabled = !StartupManager.IsEnabled();
+            StartupManager.SetEnabled(enabled);
+            trayIcon.ContextMenuStrip = BuildMenu();
+        });
+        startupItem.Font = new Font(startupItem.Font!, StartupManager.IsEnabled() ? FontStyle.Bold : FontStyle.Regular);
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        menu.Items.Add("Open Config Folder", null, (_, _) =>
+        {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Mouse Jiggler");
+            Directory.CreateDirectory(folder);
+            System.Diagnostics.Process.Start("explorer.exe", folder);
+        });
+
+        menu.Items.Add("About Mouse Jiggler", null, (_, _) => AboutDialog.Show());
+
+        menu.Items.Add(new ToolStripSeparator());
+
+        var quitItem = menu.Items.Add("Exit", null, (_, _) =>
+        {
+            running = false;
+            trayIcon.Visible = false;
+            Application.Exit();
+        });
+        quitItem.Font = new Font("Segoe UI", 9);
+
         return menu;
     }
 
@@ -177,6 +411,8 @@ class JigglerApp : ApplicationContext
             config = form.Result;
             ConfigManager.Save(config);
             if (!config.Enabled) paused = true;
+            else if (paused && config.Enabled) paused = false;
+            trayIcon.ContextMenuStrip = BuildMenu();
         }
     }
 
@@ -209,15 +445,37 @@ class JigglerApp : ApplicationContext
     }
 }
 
+// ── Dark-themed menu renderer ────────────────────────────────────────────
+class DarkToolStripRenderer : ToolStripProfessionalRenderer
+{
+    public DarkToolStripRenderer() : base(new DarkColorTable()) { }
+
+    class DarkColorTable : ProfessionalColorTable
+    {
+        public override Color MenuItemBorder => Color.Transparent;
+        public override Color MenuItemSelected => Color.FromArgb(76, 175, 80);
+        public override Color MenuItemSelectedGradientBegin => Color.FromArgb(60, 60, 68);
+        public override Color MenuItemSelectedGradientEnd => Color.FromArgb(60, 60, 68);
+        public override Color ToolStripDropDownBackground => Color.FromArgb(40, 40, 46);
+        public override Color ImageMarginGradientBegin => Color.FromArgb(40, 40, 46);
+        public override Color ImageMarginGradientMiddle => Color.FromArgb(40, 40, 46);
+        public override Color ImageMarginGradientEnd => Color.FromArgb(40, 40, 46);
+        public override Color MenuBorder => Color.FromArgb(60, 60, 68);
+        public override Color SeparatorDark => Color.FromArgb(55, 55, 62);
+        public override Color SeparatorLight => Color.FromArgb(55, 55, 62);
+        public override Color MenuItemPressedGradientBegin => Color.FromArgb(50, 50, 56);
+        public override Color MenuItemPressedGradientEnd => Color.FromArgb(50, 50, 56);
+    }
+}
+
 // ── Entry Point ──────────────────────────────────────────────────────────
 class Program
 {
     [STAThread]
     static void Main()
     {
-        // Single instance
         var mutex = NativeMethods.CreateMutex(IntPtr.Zero, true, "Global\\MouseJigglerSingleInstance");
-        if (NativeMethods.GetLastError() == 183) // ERROR_ALREADY_EXISTS
+        if (NativeMethods.GetLastError() == 183)
         {
             MessageBox.Show("Mouse Jiggler is already running.\nCheck your system tray.",
                 "Mouse Jiggler", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -227,5 +485,6 @@ class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new JigglerApp());
+        GC.KeepAlive(mutex);
     }
 }
