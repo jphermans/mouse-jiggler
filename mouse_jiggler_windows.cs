@@ -450,6 +450,21 @@ class DarkToolStripRenderer : ToolStripProfessionalRenderer
 {
     public DarkToolStripRenderer() : base(new DarkColorTable()) { }
 
+    protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+    {
+        // Force light text on dark background
+        e.TextColor = e.Item.Selected
+            ? Color.White
+            : Color.FromArgb(220, 220, 228);
+        base.OnRenderItemText(e);
+    }
+
+    protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+    {
+        e.ArrowColor = Color.FromArgb(180, 180, 190);
+        base.OnRenderArrow(e);
+    }
+
     class DarkColorTable : ProfessionalColorTable
     {
         public override Color MenuItemBorder => Color.Transparent;
