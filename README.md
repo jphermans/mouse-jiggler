@@ -1,11 +1,11 @@
 # 🖱️ Mouse Jiggler
 
-> Keep your screen awake without raising flags. Subtle, undetectable mouse movement from the system tray.
-> **Cross-platform** — Windows, macOS (Apple Silicon), and Linux.
-
 <p align="center">
-  <img src="icon_preview.png" width="128" alt="Mouse Jiggler icon">
+  <img src="readme_banner.png" width="800" alt="Mouse Jiggler — keep your screen awake">
 </p>
+
+> Subtle, undetectable mouse movement from your system tray.
+> **Cross-platform** — Windows, macOS (Apple Silicon), and Linux.
 
 ## ✨ Features
 
