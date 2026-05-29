@@ -16,13 +16,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - run: |
-          pyinstaller --onefile --windowed --noconsole --name "MouseJiggler" --add-data "mouse_jiggler.ico;." mouse_jiggler.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+      - name: Build with .NET
+        run: |
+          mkdir dist
+          dotnet publish MouseJiggler.Windows.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:AssemblyName=MouseJiggler `
+            -o dist
       - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-Windows
