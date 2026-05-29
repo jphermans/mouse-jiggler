@@ -71,8 +71,9 @@ pyinstaller --onefile --windowed --noconsole --name "MouseJiggler" --add-data "m
 
 ### macOS
 ```bash
-pip3 install pyinstaller rumps Pillow
-pyinstaller --onefile --windowed --name "MouseJiggler" mouse_jiggler_macos.py
+pip3 install rumps Pillow py2app
+python3 setup_macos.py py2app
+# Output: dist/Mouse Jiggler.app
 ```
 
 ### Linux
