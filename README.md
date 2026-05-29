@@ -39,11 +39,13 @@ python mouse_jiggler.py
 **Requirements:** macOS 11+ (Big Sur or later)
 
 ```bash
-swiftc -O -o MouseJiggler mouse_jiggler_macos.swift
+swiftc -O -framework AppKit -framework CoreGraphics -o MouseJiggler mouse_jiggler_macos.swift
 ./MouseJiggler
 ```
 
 Or download the pre-built `.app` from [GitHub Actions](https://github.com/jphermans/mouse-jiggler/actions).
+
+> **Note:** macOS requires Accessibility permission for mouse control. On first run, open **System Settings → Privacy & Security → Accessibility** and enable the app.
 
 ## ⚙️ Settings
 

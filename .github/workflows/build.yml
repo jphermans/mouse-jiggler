@@ -38,7 +38,11 @@ jobs:
       - name: Build Swift binary
         run: |
           mkdir -p dist
-          swiftc -O -o dist/MouseJiggler mouse_jiggler_macos.swift
+          swiftc -O \
+            -framework AppKit \
+            -framework CoreGraphics \
+            -o dist/MouseJiggler \
+            mouse_jiggler_macos.swift
       - name: Create .app bundle
         run: |
           APP="Mouse Jiggler"
