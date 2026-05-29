@@ -14,27 +14,17 @@ jobs:
   # ── Windows (x64) ─────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Build with PyInstaller
-        run: |
+      - run: |
           pyinstaller --onefile --windowed --noconsole --name "MouseJiggler" --add-data "mouse_jiggler.ico;." mouse_jiggler.py
-
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-Windows
           path: dist/MouseJiggler.exe
@@ -43,32 +33,40 @@ jobs:
   # ── macOS (Apple Silicon) ──────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
+      - uses: actions/checkout@v4
+      - name: Build Swift binary
         run: |
-          python3 -m pip install --upgrade pip
-          pip3 install rumps Pillow py2app
-
-      - name: Build with py2app
+          mkdir -p dist
+          swiftc -O -o dist/MouseJiggler mouse_jiggler_macos.swift
+      - name: Create .app bundle
         run: |
-          python3 setup_macos.py py2app
-
+          APP="Mouse Jiggler"
+          BUNDLE="dist/$APP.app"
+          mkdir -p "$BUNDLE/Contents/MacOS"
+          cp dist/MouseJiggler "$BUNDLE/Contents/MacOS/$APP"
+          chmod +x "$BUNDLE/Contents/MacOS/$APP"
+          python3 -c "
+          import plistlib
+          pl = {
+              'CFBundleExecutable': '$APP',
+              'CFBundleIdentifier': 'com.jphermans.mouse-jiggler',
+              'CFBundleName': '$APP',
+              'CFBundlePackageType': 'APPL',
+              'CFBundleVersion': '1.0.0',
+              'CFBundleShortVersionString': '1.0.0',
+              'LSUIElement': True,
+              'NSHighResolutionCapable': True,
+          }
+          with open('$BUNDLE/Contents/Info.plist', 'wb') as f:
+              plistlib.dump(pl, f)
+          "
+          rm dist/MouseJiggler
       - name: Package as zip
         run: |
           cd dist
           zip -r MouseJiggler-macOS.zip "Mouse Jiggler.app"
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-macOS
           path: dist/MouseJiggler-macOS.zip
@@ -76,33 +74,21 @@ jobs:
 
   # ── Linux (x64, glibc 2.35+) ──────────────────────────────────────────
   build-linux:
-    runs-on: ubuntu-22.04  # oldest available for broad glibc compatibility
-
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install system dependencies
-        run: |
+      - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq python3-tk
-
-      - name: Install Python dependencies
-        run: |
+      - run: |
           python3 -m pip install --upgrade pip
           pip3 install -r requirements.txt
-
-      - name: Build with PyInstaller
-        run: |
+      - run: |
           pyinstaller --onefile --windowed --name "MouseJiggler" --add-data "mouse_jiggler.ico:." mouse_jiggler.py
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-Linux
           path: dist/MouseJiggler
@@ -113,17 +99,13 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: MouseJiggler-*
           merge-multiple: true
           path: artifacts/
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/MouseJiggler.exe

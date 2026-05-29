@@ -20,7 +20,7 @@
 | Platform | UI Framework | Mouse Backend |
 |----------|-------------|----------------|
 | **Windows** | pystray + tkinter | Win32 `SendInput` API |
-| **macOS** | rumps (native AppKit) | CoreGraphics `CGEvent` via ctypes |
+| **macOS** | Swift (native AppKit) | CoreGraphics `CGEvent` |
 | **Linux** | pystray + tkinter | Xlib `XWarpPointer` via ctypes |
 
 ## 🚀 Quick Start
@@ -36,14 +36,14 @@ python mouse_jiggler.py
 
 ### macOS
 
-**Requirements:** Python 3.9+
+**Requirements:** macOS 11+ (Big Sur or later)
 
 ```bash
-pip3 install rumps Pillow
-python3 mouse_jiggler_macos.py
+swiftc -O -o MouseJiggler mouse_jiggler_macos.swift
+./MouseJiggler
 ```
 
-> **Note:** macOS requires Accessibility permission. On first run, open **System Settings → Privacy & Security → Accessibility** and enable the app.
+Or download the pre-built `.app` from [GitHub Actions](https://github.com/jphermans/mouse-jiggler/actions).
 
 ## ⚙️ Settings
 
@@ -71,9 +71,8 @@ pyinstaller --onefile --windowed --noconsole --name "MouseJiggler" --add-data "m
 
 ### macOS
 ```bash
-pip3 install rumps Pillow py2app
-python3 setup_macos.py py2app
-# Output: dist/Mouse Jiggler.app
+swiftc -O -o MouseJiggler mouse_jiggler_macos.swift
+# Output: MouseJiggler (Mach-O executable)
 ```
 
 ### Linux
@@ -90,7 +89,7 @@ Every push to `main` automatically builds for all three platforms:
 | Artifact | Runner | Source File |
 |----------|--------|-------------|
 | `MouseJiggler.exe` | `windows-latest` (x64) | `mouse_jiggler.py` |
-| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | `mouse_jiggler_macos.py` |
+| `MouseJiggler-macOS.zip` | `macos-latest` (Apple Silicon) | Swift (native) |
 | `MouseJiggler` | `ubuntu-22.04` (x64) | `mouse_jiggler.py` |
 
 Download the latest from the [Actions tab](https://github.com/jphermans/mouse-jiggler/actions).
@@ -105,7 +104,7 @@ git tag v1.0.0 && git push origin v1.0.0
 ```
 mouse-jiggler/
 ├── mouse_jiggler.py          # Windows + Linux (pystray)
-├── mouse_jiggler_macos.py    # macOS (rumps — native AppKit)
+├── mouse_jiggler_macos.swift # macOS (Swift — native AppKit)
 ├── mouse_jiggler.ico         # Application icon (multi-res)
 ├── generate_icon.py          # Icon generator script
 ├── icon_preview.png          # Icon preview for README
