@@ -4,12 +4,13 @@
   <img src="readme_banner.png" width="800" alt="Mouse Jiggler — keep your screen awake">
 </p>
 
-> Subtle, undetectable mouse movement from your system tray.
+> Subtle, undetectable mouse movement. System tray on Windows/macOS, daemon on Linux.
 > **Cross-platform** — Windows, macOS (Apple Silicon), and Linux.
 
 ## ✨ Features
 
-- **Runs in the system tray / menu bar** — click for Pause, Settings, or Quit
+- **Runs in the system tray / menu bar** — click for Pause, Settings, or Quit (Windows/macOS)
+- **Background daemon** — runs silently in the terminal (Linux)
 - **Randomized movement** — 1–N pixels in a random direction each tick — no predictable pattern
 - **Single-instance** — won't accidentally run twice
 - **Persistent config** — saves to your OS-native config directory
@@ -21,7 +22,7 @@
 |----------|----------|-------------|----------------|
 | **Windows** | C# (.NET 8) | WinForms | Win32 `SendInput` API |
 | **macOS** | ObjC | Cocoa | CoreGraphics `CGEvent` |
-| **Linux** | Go | systray | Xlib `XWarpPointer` |
+| **Linux** | Go | daemon (CLI) | Xlib `XWarpPointer` |
 
 ## 🔒 Why IT Won't Flag It
 
@@ -85,7 +86,7 @@ go build -ldflags="-s -w" -o MouseJiggler mouse_jiggler_linux.go
 
 - **Windows:** Right-click tray icon → "Settings" (WinForms GUI with sliders)
 - **macOS:** Menu bar presets (Interval/Pixels submenus) or "Open Config File"
-- **Linux:** Right-click tray icon → Interval/Pixels submenus or "Open Config File"
+- **Linux:** Edit the config file directly — reloaded on each tick. `Ctrl+C` to stop.
 
 | Platform | Config path |
 |----------|-------------|
@@ -117,8 +118,7 @@ mouse-jiggler/
 ├── mouse_jiggler_windows.cs     # Windows (C# .NET 8)
 ├── MouseJiggler.Windows.csproj  # Windows project file
 ├── mouse_jiggler_macos.m        # macOS (ObjC — native Cocoa)
-├── mouse_jiggler_linux.go       # Linux (Go + systray + Xlib)
-├── go.mod                       # Go module file
+├── mouse_jiggler_linux.go       # Linux (Go + Xlib daemon)
 ├── AppIcon.icns                 # macOS app icon
 ├── generate_macos_icon.py       # macOS icon generator
 ├── generate_readme_banner.py    # README banner generator
