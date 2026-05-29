@@ -218,21 +218,47 @@ func refreshChecks(parent *systray.MenuItem, intervals []struct {
 }
 
 func makeIcon() []byte {
-	// 18x18 green circle with white mouse pointer — raw RGBA
-	size := 18
+	// 22x22 green circle with white mouse pointer — raw RGBA
+	size := 22
 	img := make([]byte, size*size*4)
+
+	// Helper to check if point is inside mouse pointer polygon
+	inPointer := func(x, y int) bool {
+		// Mouse pointer shape: (5,16)->(7,12)->(11,15)->(14,9)->(12,6)->(17,4)
+		pts := [][2]int{{5, 16}, {7, 12}, {11, 15}, {14, 9}, {12, 6}, {17, 4}}
+		// Simple point-in-polygon via winding
+		inside := false
+		j := len(pts) - 1
+		for i := 0; i < len(pts); i++ {
+			if (pts[i][1] > y) != (pts[j][1] > y) &&
+				x < (pts[j][0]-pts[i][0])*(y-pts[i][1])/(pts[j][1]-pts[i][1])+pts[i][0] {
+				inside = !inside
+			}
+			j = i
+		}
+		return inside
+	}
+
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
-			dx := float64(x) - 9
-			dy := float64(y) - 9
-			dist := dx*dx + dy*dy
+			dx := float64(x) - 11
+			dy := float64(y) - 11
 			idx := (y*size + x) * 4
-			if dist < 64 {
-				// Green circle
-				img[idx] = 76   // R
-				img[idx+1] = 175 // G
-				img[idx+2] = 80  // B
-				img[idx+3] = 255 // A
+
+			if dx*dx+dy*dy <= 100 { // circle radius 10
+				if inPointer(x, y) {
+					// White pointer
+					img[idx] = 255
+					img[idx+1] = 255
+					img[idx+2] = 255
+					img[idx+3] = 255
+				} else {
+					// Green circle
+					img[idx] = 76
+					img[idx+1] = 175
+					img[idx+2] = 80
+					img[idx+3] = 255
+				}
 			}
 		}
 	}

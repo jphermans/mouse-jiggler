@@ -136,11 +136,25 @@ class JigglerApp : ApplicationContext
         var bmp = new Bitmap(32, 32);
         using var g = Graphics.FromImage(bmp);
         g.Clear(Color.Transparent);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+        // Green circle background
         using var brush = new SolidBrush(Color.FromArgb(76, 175, 80));
-        g.FillEllipse(brush, 0, 0, 31, 31);
+        g.FillEllipse(brush, 1, 1, 30, 30);
+
+        // White mouse pointer
         using var pen = new Pen(Color.White, 2);
-        var pts = new Point[] { new(6,26), new(14,18), new(22,28), new(26,18), new(18,12), new(22,6) };
-        g.DrawPolygon(pen, pts);
+        var cursor = new Point[] {
+            new(7,24), new(10,18), new(15,22), new(20,14), new(18,9), new(25,7),
+        };
+        g.DrawLines(pen, cursor);
+        // Fill cursor
+        using var cursorBrush = new SolidBrush(Color.White);
+        var fillPts = new Point[] {
+            new(7,24), new(10,18), new(15,22), new(20,14), new(18,9), new(25,7),
+        };
+        g.FillPolygon(cursorBrush, fillPts, System.Drawing.Drawing2D.FillMode.Winding);
+
         return Icon.FromHandle(bmp.GetHicon());
     }
 
