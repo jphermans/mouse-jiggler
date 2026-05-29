@@ -56,19 +56,16 @@ jobs:
       - name: Install dependencies
         run: |
           python3 -m pip install --upgrade pip
-          pip3 install rumps Pillow pyinstaller
+          pip3 install rumps Pillow py2app
 
-      - name: Build with PyInstaller
+      - name: Build with py2app
         run: |
-          pyinstaller \
-            --onefile --windowed \
-            --name "MouseJiggler" \
-            mouse_jiggler_macos.py
+          python3 setup_macos.py py2app
 
       - name: Package as zip
         run: |
           cd dist
-          zip -r MouseJiggler-macOS.zip MouseJiggler.app
+          zip -r MouseJiggler-macOS.zip "Mouse Jiggler.app"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
