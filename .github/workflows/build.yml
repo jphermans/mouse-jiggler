@@ -27,7 +27,7 @@ jobs:
         with:
           name: MouseJiggler-Windows
           path: dist/MouseJiggler.exe
-          retention-days: 30
+          retention-days: 1
 
   # ── macOS (Apple Silicon) ──────────────────────────────────────────────
   build-macos:
@@ -89,7 +89,7 @@ jobs:
         with:
           name: MouseJiggler-macOS
           path: dist/MouseJiggler-macOS.zip
-          retention-days: 30
+          retention-days: 1
 
   # ── Linux (x64, glibc 2.35+) ──────────────────────────────────────────
   build-linux:
@@ -110,7 +110,7 @@ jobs:
         with:
           name: MouseJiggler-Linux
           path: dist/MouseJiggler
-          retention-days: 30
+          retention-days: 1
 
   # ── Release (tag push only) ───────────────────────────────────────────
   release:
