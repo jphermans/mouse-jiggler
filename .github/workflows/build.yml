@@ -17,8 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: { python-version: '3.12' }
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -35,48 +34,62 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Generate app icon
+        run: |
+          pip3 install Pillow
+          python3 generate_macos_icon.py AppIcon.icns
+
       - name: Build ObjC binary
         run: |
           mkdir -p dist
           clang -O2 \
             -framework Cocoa \
             -framework CoreGraphics \
+            -framework ServiceManagement \
             -o dist/MouseJiggler \
             mouse_jiggler_macos.m
+
       - name: Verify binary
         run: |
           file dist/MouseJiggler
           otool -L dist/MouseJiggler | head -10
           ls -la dist/MouseJiggler
+
       - name: Create .app bundle
         run: |
           APP="Mouse Jiggler"
           BUNDLE="dist/$APP.app"
           mkdir -p "$BUNDLE/Contents/MacOS"
+          mkdir -p "$BUNDLE/Contents/Resources"
           cp dist/MouseJiggler "$BUNDLE/Contents/MacOS/$APP"
           chmod +x "$BUNDLE/Contents/MacOS/$APP"
+          cp AppIcon.icns "$BUNDLE/Contents/Resources/AppIcon.icns"
           python3 -c "
           import plistlib
           pl = {
               'CFBundleExecutable': '$APP',
               'CFBundleIdentifier': 'com.jphermans.mouse-jiggler',
               'CFBundleName': '$APP',
+              'CFBundleDisplayName': '$APP',
               'CFBundlePackageType': 'APPL',
               'CFBundleVersion': '1.0.0',
               'CFBundleShortVersionString': '1.0.0',
+              'CFBundleIconFile': 'AppIcon',
               'LSUIElement': True,
               'NSHighResolutionCapable': True,
           }
           with open('$BUNDLE/Contents/Info.plist', 'wb') as f:
               plistlib.dump(pl, f)
           "
-          # Ad-hoc code signing (no Apple Dev account needed)
           codesign --force --deep --sign - "$BUNDLE"
           rm dist/MouseJiggler
+
       - name: Package as zip
         run: |
           cd dist
           zip -r MouseJiggler-macOS.zip "Mouse Jiggler.app"
+
       - uses: actions/upload-artifact@v4
         with:
           name: MouseJiggler-macOS
@@ -89,8 +102,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: { python-version: '3.12' }
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq python3-tk
