@@ -35,14 +35,19 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build Swift binary
+      - name: Build ObjC binary
         run: |
           mkdir -p dist
-          swiftc -O \
-            -framework AppKit \
+          clang -O2 \
+            -framework Cocoa \
             -framework CoreGraphics \
             -o dist/MouseJiggler \
-            mouse_jiggler_macos.swift
+            mouse_jiggler_macos.m
+      - name: Verify binary
+        run: |
+          file dist/MouseJiggler
+          otool -L dist/MouseJiggler | head -10
+          ls -la dist/MouseJiggler
       - name: Create .app bundle
         run: |
           APP="Mouse Jiggler"
