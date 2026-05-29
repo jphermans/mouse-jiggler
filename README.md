@@ -72,7 +72,7 @@ chmod +x MouseJiggler && ./MouseJiggler
 
 To build from source:
 ```bash
-sudo apt install libx11-dev libgtk-3-dev libappindicator3-dev
+sudo apt install libx11-dev libgtk-3-dev libappindicator3-dev libayatana-appindicator3-dev
 go build -ldflags="-s -w" -o MouseJiggler mouse_jiggler_linux.go
 ```
 
