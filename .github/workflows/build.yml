@@ -70,6 +70,8 @@ jobs:
           with open('$BUNDLE/Contents/Info.plist', 'wb') as f:
               plistlib.dump(pl, f)
           "
+          # Ad-hoc code signing (no Apple Dev account needed)
+          codesign --force --deep --sign - "$BUNDLE"
           rm dist/MouseJiggler
       - name: Package as zip
         run: |
